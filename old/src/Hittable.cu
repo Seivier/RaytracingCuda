@@ -3,9 +3,9 @@
 //
 
 #include "Raytracing/Hittable.cuh"
-#include <glm/geometric.hpp>
+#include "Raytracing/Material.cuh"
 
-void HitRecord::setFaceNormal(const Ray& r, const Vector& outwardNormal)
+__device__ void HitRecord::setFaceNormal(const Ray& r, const Vector& outwardNormal)
 {
 	frontFace = dot(r.direction(), outwardNormal) < 0;
 	normal = frontFace ? outwardNormal : -outwardNormal;

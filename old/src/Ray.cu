@@ -3,4 +3,3 @@
 //
 
 #include "Raytracing/Ray.cuh"
-#include <glm/geometric.hpp>

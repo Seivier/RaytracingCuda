@@ -8,12 +8,16 @@
 #include "Raytracing/Utils.cuh"
 #include "Raytracing/Color.cuh"
 
+#include <curand_kernel.h>
+
 struct HitRecord;
 
 class Material
 {
  public:
+	CUDA_CALLABLE_MEMBER Material() {};
 	virtual bool scatter(const Ray& r_in, const HitRecord& rec, Color& attenuation, Ray& scattered) const = 0;
+	__device__ virtual bool scatter(const Ray& r_in, const HitRecord& rec, Color& attenuation, Ray& scattered, curandState* state) const = 0;
 };
 
 class Lambertian : public Material
@@ -24,8 +28,13 @@ class Lambertian : public Material
 	{
 	}
 
+
 	bool scatter(
 		const Ray& r_in, const HitRecord& rec, Color& attenuation, Ray& scattered
+	) const override;
+
+	__device__ bool scatter(
+		const Ray& r_in, const HitRecord& rec, Color& attenuation, Ray& scattered, curandState* state
 	) const override;
 
  private:
@@ -40,8 +49,12 @@ class Metal : public Material
 	{
 	}
 
-	virtual bool scatter(
+	bool scatter(
 		const Ray& r_in, const HitRecord& rec, Color& attenuation, Ray& scattered
+	) const override;
+
+	__device__ bool scatter(
+		const Ray& r_in, const HitRecord& rec, Color& attenuation, Ray& scattered, curandState* state
 	) const override;
 
  public:
@@ -61,10 +74,14 @@ class Dielectric : public Material
 		const Ray& r_in, const HitRecord& rec, Color& attenuation, Ray& scattered
 	) const override;
 
+	__device__ bool scatter(
+		const Ray& r_in, const HitRecord& rec, Color& attenuation, Ray& scattered, curandState* state
+	) const override;
+
  private:
 	float ir; // Index of Refraction
 
-	static float reflectance(float cosine, float ref_idx);
+	__device__ __host__ static float reflectance(float cosine, float ref_idx);
 
 };
 

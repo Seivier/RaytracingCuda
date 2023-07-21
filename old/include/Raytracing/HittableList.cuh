@@ -10,6 +10,8 @@
 
 #include "Raytracing/Hittable.cuh"
 
+#define CUDA_CALLABLE_MEMBER __host__ __device__
+
 class HittableList: public Hittable
 {
  public:
@@ -19,10 +21,17 @@ class HittableList: public Hittable
 	inline void clear() { objects.clear(); }
 	inline void add(std::shared_ptr<Hittable> object) { objects.push_back(object); }
 
-	bool hit(const Ray& r, float tMin, float tMax, HitRecord& rec) const override;
+	void initGPU() override;
+	void updateGPU() override;
+	void freeGPU() override;
+
+	__device__ bool hit(const Ray& r, float tMin, float tMax, HitRecord& rec) const override;
+
 
  private:
 	std::vector<std::shared_ptr<Hittable>> objects;
+	Hittable** d_objects;
+	size_t count;
 
 };
 

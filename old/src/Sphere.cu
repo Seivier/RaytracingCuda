@@ -3,9 +3,8 @@
 //
 
 #include "Raytracing/Sphere.cuh"
-#include <glm/gtx/norm.hpp>
 
-bool Sphere::hit(const Ray& r, float tMin, float tMax, HitRecord& rec) const
+__device__ bool Sphere::hit(const Ray& r, float tMin, float tMax, HitRecord& rec) const
 {
 	Vector oc = r.origin() - center;
 	auto a = r.direction().squaredLength();
@@ -29,8 +28,21 @@ bool Sphere::hit(const Ray& r, float tMin, float tMax, HitRecord& rec) const
 	rec.p = r.at(rec.t);
 	Vector outwardNormal = (rec.p - center) / radius;
 	rec.setFaceNormal(r, outwardNormal);
-	rec.matPtr = matPtr;
+	rec.matPtr = d_matPtr;
 
 	return true;
 }
+void Sphere::initGPU()
+{
 
+}
+
+void Sphere::freeGPU()
+{
+
+}
+
+void Sphere::updateGPU()
+{
+
+}

@@ -2,7 +2,8 @@
 // Created by vigb9 on 19/07/2023.
 //
 #include "Raytracing/Color.cuh"
-#include "Raytracing/Utils.cuh"
+
+float clamp(float x, float min, float max);
 
 void writeColor(std::ostream& out, Color pixel_color, int samples_per_pixel)
 {
