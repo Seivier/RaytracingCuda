@@ -3,6 +3,7 @@
 //
 
 #include "sphere.cuh"
+#include "material.cuh"
 
 CUDA_CALLABLE bool sphere::hit(const ray& r, float tMin, float tMax, hit_record& rec) const
 {
@@ -38,3 +39,8 @@ CUDA_CALLABLE bool sphere::hit(const ray& r, float tMin, float tMax, hit_record&
 	}
 	return false;
 }
+__host__ __device__ sphere::~sphere()
+{
+	delete matPtr;
+}
+

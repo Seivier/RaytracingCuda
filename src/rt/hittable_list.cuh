@@ -10,13 +10,18 @@
 class hittable_list: public hittable
 {
  public:
-	CUDA_CALLABLE hittable_list() {};
-	CUDA_CALLABLE hittable_list(hittable** l, int n) { list = l; count = n; };
+	CUDA_CALLABLE hittable_list();
+	CUDA_CALLABLE hittable_list(hittable** l, int n);
+	CUDA_CALLABLE ~hittable_list() override;
+	CUDA_CALLABLE void add(hittable* obj);
 	CUDA_CALLABLE bool hit(const ray& r, float tMin, float tMax, hit_record& rec) const override;
-
+	CUDA_CALLABLE inline hittable* operator[](int i) const { return list[i]; };
+	CUDA_CALLABLE inline hittable*& operator[](int i) { return list[i]; };
+ public:
+	int count;
  private:
 	hittable** list;
-	int count;
+	int capacity;
 };
 
 #endif //_HITTABLE_LIST_CUH_

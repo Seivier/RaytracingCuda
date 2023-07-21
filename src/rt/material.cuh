@@ -20,6 +20,7 @@ CUDA_ONLY vector randomInUnitSphere(curandState* localRandState);
 class material
 {
  public:
+	CUDA_CALLABLE virtual ~material() {};
 	CUDA_ONLY virtual bool scatter(const ray& rIn, const hit_record& rec, vector& attenuation, ray& scattered, curandState* localRandState) const = 0;
 };
 

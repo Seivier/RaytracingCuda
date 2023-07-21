@@ -23,6 +23,7 @@ struct hit_record
 class hittable
 {
  public:
+	CUDA_CALLABLE virtual ~hittable() {};
 	CUDA_CALLABLE virtual bool hit(const ray& r, float tMin, float tMax, hit_record& rec) const = 0;
 };
 

@@ -1,6 +1,5 @@
 #include <iostream>
-#include <time.h>
-#include <float.h>
+#include <chrono>
 #include <curand_kernel.h>
 #include "rt/vector.cuh"
 #include "rt/ray.cuh"
@@ -52,38 +51,34 @@ __device__ vector rayColor(const ray& r, hittable **world, curandState *local_ra
     return vector(0.0,0.0,0.0); // exceeded recursion
 }
 
-__global__ void rand_init(curandState *rand_state) {
+__global__ void randInit(curandState *rand_state) {
     if (threadIdx.x == 0 && blockIdx.x == 0) {
         curand_init(1984, 0, 0, rand_state);
     }
 }
 
-__global__ void render_init(int max_x, int max_y, curandState *rand_state) {
+__global__ void renderInit(int max_x, int max_y, curandState *rand_state) {
     int i = threadIdx.x + blockIdx.x * blockDim.x;
     int j = threadIdx.y + blockIdx.y * blockDim.y;
     if((i >= max_x) || (j >= max_y)) return;
     int pixel_index = j*max_x + i;
-    // Original: Each thread gets same seed, a different sequence number, no offset
-    // curand_init(1984, pixel_index, 0, &rand_state[pixel_index]);
-    // BUGFIX, see Issue#2: Each thread gets different seed, same sequence for
-    // performance improvement of about 2x!
     curand_init(1984+pixel_index, 0, 0, &rand_state[pixel_index]);
 }
 
-__global__ void render(vector *fb, int max_x, int max_y, int ns, camera **cam, hittable **world, curandState *rand_state) {
+__global__ void render(color *fb, int max_x, int max_y, int ns, camera **cam, hittable **world, curandState *randState) {
     int i = threadIdx.x + blockIdx.x * blockDim.x;
     int j = threadIdx.y + blockIdx.y * blockDim.y;
     if((i >= max_x) || (j >= max_y)) return;
     int pixel_index = j*max_x + i;
-    curandState local_rand_state = rand_state[pixel_index];
-    vector col(0,0,0);
+    curandState local_rand_state = randState[pixel_index];
+    color col(0,0,0);
     for(int s=0; s < ns; s++) {
         float u = float(i + curand_uniform(&local_rand_state)) / float(max_x);
         float v = float(j + curand_uniform(&local_rand_state)) / float(max_y);
         ray r = (*cam)->getRay(u, v, &local_rand_state);
         col += rayColor(r, world, &local_rand_state);
     }
-    rand_state[pixel_index] = local_rand_state;
+    randState[pixel_index] = local_rand_state;
     col /= float(ns);
     col[0] = sqrt(col[0]);
     col[1] = sqrt(col[1]);
@@ -93,135 +88,113 @@ __global__ void render(vector *fb, int max_x, int max_y, int ns, camera **cam, h
 
 #define RND (curand_uniform(&local_rand_state))
 
-__global__ void create_world(hittable **d_list, hittable **d_world, camera **d_camera, int nx, int ny, curandState *rand_state) {
+__global__ void createWorld(hittable **world, camera **cam, int px, int py, curandState *randState) {
     if (threadIdx.x == 0 && blockIdx.x == 0) {
-        curandState local_rand_state = *rand_state;
-        d_list[0] = new sphere(vector(0,-1000.0,-1), 1000,
-                               new lambertian(vector(0.5, 0.5, 0.5)));
-        int i = 1;
-        for(int a = -11; a < 11; a++) {
-            for(int b = -11; b < 11; b++) {
-                float choose_mat = RND;
-                vector center(a+RND,0.2,b+RND);
-                if(choose_mat < 0.8f) {
-                    d_list[i++] = new sphere(center, 0.2,
-                                             new lambertian(vector(RND*RND, RND*RND, RND*RND)));
-                }
-                else if(choose_mat < 0.95f) {
-                    d_list[i++] = new sphere(center, 0.2,
-                                             new metal(vector(0.5f*(1.0f+RND), 0.5f*(1.0f+RND), 0.5f*(1.0f+RND)), 0.5f*RND));
-                }
-                else {
-                    d_list[i++] = new sphere(center, 0.2, new dielectric(1.5));
-                }
-            }
-        }
-        d_list[i++] = new sphere(vector(0, 1,0),  1.0, new dielectric(1.5));
-        d_list[i++] = new sphere(vector(-4, 1, 0), 1.0, new lambertian(vector(0.4, 0.2, 0.1)));
-        d_list[i++] = new sphere(vector(4, 1, 0),  1.0, new metal(vector(0.7, 0.6, 0.5), 0.0));
-        *rand_state = local_rand_state;
-        *d_world  = new hittable_list(d_list, 22*22+1+3);
-
-        vector lookfrom(13,2,3);
+        curandState localRand = *randState;
+        auto w = new hittable_list();
+		w->add(new sphere(vector(0,-1000,0), 1000, new lambertian(vector(0.1, 0.5, 0.1))));
+		w->add(new sphere(vector(0, 1, 0), 1.0, new dielectric(1.5)));
+		w->add(new sphere(vector(-4, 1, 0), 1.0, new lambertian(vector(0.4, 0.2, 0.1))));
+        vector lookfrom(0,1,13);
         vector lookat(0,0,0);
-        float dist_to_focus = 10.0; (lookfrom-lookat).length();
+        float dist_to_focus = (lookfrom-lookat).length();
         float aperture = 0.1;
-        *d_camera   = new camera(lookfrom,
+		*world = w;
+        *cam   = new camera(lookfrom,
                                  lookat,
                                  vector(0,1,0),
                                  30.0,
-                                 float(nx)/float(ny),
+                                 float(px)/float(py),
                                  aperture,
                                  dist_to_focus);
     }
 }
 
-__global__ void free_world(hittable **d_list, hittable **d_world, camera **d_camera) {
-    for(int i=0; i < 22*22+1+3; i++) {
-        delete ((sphere *)d_list[i])->matPtr;
-        delete d_list[i];
-    }
-    delete *d_world;
-    delete *d_camera;
+
+__global__ void freeWorld(hittable **dWorld, camera **dCamera) {
+    delete *dWorld;
+    delete *dCamera;
 }
 
-int main() {
-    int nx = 1200;
-    int ny = 800;
-    int ns = 10;
-    int tx = 8;
-    int ty = 8;
+int main(int argc, char** argv) {
 
-    std::cerr << "Rendering a " << nx << "x" << ny << " image with " << ns << " samples per pixel ";
-    std::cerr << "in " << tx << "x" << ty << " blocks.\n";
+	if (argc != 6)
+	{
+		std::cerr << "Usage: " << argv[0] << " <width> <height> <block_size_x> <block_size_y> <sample per pixel>\n";
+		return 1;
+	}
 
-    int num_pixels = nx*ny;
-    size_t fb_size = num_pixels*sizeof(vector);
+    int px = atoi(argv[1]);
+    int py = atoi(argv[2]);
+    int tx = atoi(argv[3]);
+    int ty = atoi(argv[4]);
+    int ns = atoi(argv[5]);
 
-    // allocate FB
-    vector *fb;
-    CUDA_CALL(cudaMallocManaged((void **)&fb, fb_size));
+    int numPixels = px*py;
+
+
+    color *pixels;
+    CUDA_CALL(cudaMallocManaged((void **)&pixels, numPixels*sizeof(color)));
 
     // allocate random state
-    curandState *d_rand_state;
-    CUDA_CALL(cudaMalloc((void **)&d_rand_state, num_pixels*sizeof(curandState)));
-    curandState *d_rand_state2;
-    CUDA_CALL(cudaMalloc((void **)&d_rand_state2, 1*sizeof(curandState)));
+    curandState *dRandState;
+    CUDA_CALL(cudaMalloc((void **)&dRandState, numPixels*sizeof(curandState)));
+    curandState *dRandState2;
+    CUDA_CALL(cudaMalloc((void **)&dRandState2, 1*sizeof(curandState)));
 
     // we need that 2nd random state to be initialized for the world creation
-    rand_init<<<1,1>>>(d_rand_state2);
+    randInit<<<1,1>>>(dRandState2);
     CUDA_CALL(cudaGetLastError());
     CUDA_CALL(cudaDeviceSynchronize());
 
-    // make our world of hittables & the camera
-    hittable **d_list;
-    int num_hittables = 22*22+1+3;
-    CUDA_CALL(cudaMalloc((void **)&d_list, num_hittables*sizeof(hittable *)));
-    hittable **d_world;
-    CUDA_CALL(cudaMalloc((void **)&d_world, sizeof(hittable *)));
-    camera **d_camera;
-    CUDA_CALL(cudaMalloc((void **)&d_camera, sizeof(camera *)));
-    create_world<<<1,1>>>(d_list, d_world, d_camera, nx, ny, d_rand_state2);
+    // make world
+    hittable **dWorld;
+    CUDA_CALL(cudaMalloc((void **)&dWorld, sizeof(hittable *)));
+    camera **dCamera;
+    CUDA_CALL(cudaMalloc((void **)&dCamera, sizeof(camera *)));
+    createWorld<<<1,1>>>(dWorld, dCamera, px, py, dRandState);
     CUDA_CALL(cudaGetLastError());
     CUDA_CALL(cudaDeviceSynchronize());
 
-    clock_t start, stop;
-    start = clock();
+    auto start = std::chrono::high_resolution_clock::now();
     // Render our buffer
-    dim3 blocks(nx/tx+1,ny/ty+1);
+    dim3 blocks(px/tx+1,py/ty+1);
     dim3 threads(tx,ty);
-    render_init<<<blocks, threads>>>(nx, ny, d_rand_state);
+    renderInit<<<blocks, threads>>>(px, py, dRandState);
     CUDA_CALL(cudaGetLastError());
     CUDA_CALL(cudaDeviceSynchronize());
-    render<<<blocks, threads>>>(fb, nx, ny,  ns, d_camera, d_world, d_rand_state);
+    render<<<blocks, threads>>>(pixels, px, py,  ns, dCamera, dWorld, dRandState);
     CUDA_CALL(cudaGetLastError());
     CUDA_CALL(cudaDeviceSynchronize());
-    stop = clock();
-    double timer_seconds = ((double)(stop - start)) / CLOCKS_PER_SEC;
-    std::cerr << "took " << timer_seconds << " seconds.\n";
+    auto stop = std::chrono::high_resolution_clock::now();
+	auto timer_seconds = std::chrono::duration_cast<std::chrono::duration<double>>(stop-start);
+	std::cerr << "Render: took " << timer_seconds.count() << " seconds.\n";
 
     // Output FB as Image
-    std::cout << "P3\n" << nx << " " << ny << "\n255\n";
-    for (int j = ny-1; j >= 0; j--) {
-        for (int i = 0; i < nx; i++) {
-            size_t pixel_index = j*nx + i;
-            int ir = int(255.99*fb[pixel_index].r());
-            int ig = int(255.99*fb[pixel_index].g());
-            int ib = int(255.99*fb[pixel_index].b());
+	start = std::chrono::high_resolution_clock::now();
+    std::cout << "P3\n" << px << " " << py << "\n255\n";
+    for (int j = py-1; j >= 0; j--) {
+        for (int i = 0; i < px; i++) {
+            size_t pixel_index = j*px + i;
+            int ir = int(255.99*pixels[pixel_index].r());
+            int ig = int(255.99*pixels[pixel_index].g());
+            int ib = int(255.99*pixels[pixel_index].b());
             std::cout << ir << " " << ig << " " << ib << "\n";
         }
     }
+	stop = std::chrono::high_resolution_clock::now();
+	timer_seconds = std::chrono::duration_cast<std::chrono::duration<double>>(stop-start);
+	std::cerr << "Output: took " << timer_seconds.count() << " seconds.\n";
 
     // clean up
     CUDA_CALL(cudaDeviceSynchronize());
-    free_world<<<1,1>>>(d_list,d_world,d_camera);
+    freeWorld<<<1,1>>>(dWorld,dCamera);
     CUDA_CALL(cudaGetLastError());
-    CUDA_CALL(cudaFree(d_camera));
-    CUDA_CALL(cudaFree(d_world));
-    CUDA_CALL(cudaFree(d_list));
-    CUDA_CALL(cudaFree(d_rand_state));
-    CUDA_CALL(cudaFree(d_rand_state2));
-    CUDA_CALL(cudaFree(fb));
+    CUDA_CALL(cudaFree(dCamera));
+    CUDA_CALL(cudaFree(dWorld));
+    CUDA_CALL(cudaFree(dRandState));
+    CUDA_CALL(cudaFree(dRandState2));
+    CUDA_CALL(cudaFree(pixels));
 
     cudaDeviceReset();
 }

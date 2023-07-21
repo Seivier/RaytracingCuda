@@ -7,11 +7,14 @@
 
 #include "hittable.cuh"
 
+
 class sphere: public hittable
 {
  public:
 	CUDA_CALLABLE sphere() {};
+	CUDA_CALLABLE ~sphere() override;
 	CUDA_CALLABLE sphere(point cen, float r, material* m) : center(cen), radius(r), matPtr(m) {};
+
 
 	CUDA_CALLABLE bool hit(const ray& r, float tMin, float tMax, hit_record& rec) const override;
 
