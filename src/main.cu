@@ -81,26 +81,51 @@ __global__ void render(color *pixels, int px, int py, int ns, int depth, camera 
     pixels[pIdx] = col;
 }
 
-#define RND (curand_uniform(&local_rand_state))
+#define RND (curand_uniform(&localRand))
 
 __global__ void createWorld(hittable **world, camera **cam, int px, int py, curandState *randState) {
     if (threadIdx.x == 0 && blockIdx.x == 0) {
         curandState localRand = *randState;
         auto w = new hittable_list();
-		w->add(new sphere(vector(0,-100.5,-1), 100, new lambertian(vector(0.8, 0.8, 0.0))));
-		w->add(new sphere(vector(0,0.0,-1), 0.5, new lambertian(vector(0.1, 0.2, 0.5))));
-		w->add(new sphere(vector(-1,0.0,-1), 0.5, new dielectric(1.5)));
-		w->add(new sphere(vector(-1,0.0,-1), -0.45, new dielectric(1.5)));
-		w->add(new sphere(vector(1,0.0,-1), 0.5, new metal(vector(0.8, 0.6, 0.2), 0.0)));
-        vector lookfrom(-2,2,1);
-        vector lookat(0,0,-1);
-        float dist_to_focus = (lookfrom-lookat).length();
+		w->add(new sphere(vector(0,-1000,0), 1000, new lambertian(vector(0.5, 0.5, 0.5))));
+		for (int a = -11; a < 11; a++)
+		{
+			for (int b = -11; b < 11; b++)
+			{
+				float choose_mat = RND;
+				vector center(a + 0.9*RND, 0.2, b + 0.9*RND);
+				if ((center - vector(4, 0.2, 0)).length() > 0.9)
+				{
+					if (choose_mat < 0.8) // diffuse
+					{
+						w->add(new sphere(center, 0.2, new lambertian(vector(RND*RND, RND*RND, RND*RND))));
+					}
+					else if (choose_mat < 0.95) // metal
+					{
+						w->add(new sphere(center, 0.2,
+							new metal(vector(0.5*(1 + RND), 0.5*(1 + RND), 0.5*(1 + RND)), 0.5*RND)));
+					}
+					else // glass
+					{
+						w->add(new sphere(center, 0.2, new dielectric(1.5)));
+					}
+				}
+			}
+		}
+
+		w->add(new sphere(vector(0, 1, 0), 1.0, new dielectric(1.5)));
+		w->add(new sphere(vector(-4, 1, 0), 1.0, new lambertian(vector(0.4, 0.2, 0.1))));
+		w->add(new sphere(vector(4, 1, 0), 1.0, new metal(vector(0.7, 0.6, 0.5), 0.0)));
+
+        vector lookfrom(13,2,3);
+        vector lookat(0,0,0);
+        float dist_to_focus = 10.0;
         float aperture = 0.01;
 		*world = w;
         *cam   = new camera(lookfrom,
                                  lookat,
                                  vector(0,1,0),
-                                 90.0,
+                                 20.0,
                                  float(px)/float(py),
                                  aperture,
                                  dist_to_focus);
@@ -150,7 +175,7 @@ int main(int argc, char** argv) {
     CUDA_CALL(cudaMalloc((void **)&dWorld, sizeof(hittable *)));
     camera **dCamera;
     CUDA_CALL(cudaMalloc((void **)&dCamera, sizeof(camera *)));
-    createWorld<<<1,1>>>(dWorld, dCamera, px, py, dRandState);
+    createWorld<<<1,1>>>(dWorld, dCamera, px, py, dRandState2);
     CUDA_CALL(cudaGetLastError());
     CUDA_CALL(cudaDeviceSynchronize());
 

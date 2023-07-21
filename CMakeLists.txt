@@ -7,6 +7,5 @@ set(CMAKE_CUDA_ARCHITECTURES 75)
 
 add_subdirectory(extern)
 add_subdirectory(src)
-add_subdirectory(demo)
 
 
