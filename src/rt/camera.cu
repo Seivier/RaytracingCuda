@@ -26,6 +26,7 @@ __host__ __device__ camera::camera(vector lookFrom, vector lookAt, vector vUp, f
 	horizontal = 2.0f * halfWidth * focusDist * u;
 	vertical = 2.0f * halfHeight * focusDist * v;
 }
+
 __device__ ray camera::getRay(float s, float t, curandState* localRandState) const
 {
 	vector rd = lensRadius * randomInUnitDisk(localRandState);

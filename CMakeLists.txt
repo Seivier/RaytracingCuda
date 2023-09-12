@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.8)
-project(RayTracingCUDA LANGUAGES CXX CUDA)
+project(RayTracingCUDA LANGUAGES CXX CUDA C)
 
 
 set(CMAKE_CUDA_STANDARD 20)
